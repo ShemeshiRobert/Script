@@ -2,3 +2,5 @@ pandas
 requests
 beautifulsoup4
 selenium
+mysql-connector-python
+python-dotenv

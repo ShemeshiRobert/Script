@@ -21,8 +21,11 @@ def _truncate(record: dict[str, str]) -> dict[str, str]:
     return {col: record.get(col, "")[:_LIMITS[col]] for col in _COLUMNS}
 
 
-def _dedup(records: list[dict[str, str]]) -> list[dict[str, str]]:
-    # First occurrence of each photoUrl wins; records with no photo are kept as-is.
+def dedup_records(records: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Return *records* with duplicates removed, keeping the first occurrence of each photoUrl.
+
+    Records with no photoUrl are kept as-is — they can't be matched by URL.
+    """
     seen: set[str] = set()
     out: list[dict[str, str]] = []
     for r in records:
@@ -37,7 +40,7 @@ def _dedup(records: list[dict[str, str]]) -> list[dict[str, str]]:
 
 def write_csv(records: list[dict[str, str]], path: str) -> None:
     """Write *records* to a CSV at *path*, creating parent directories as needed."""
-    unique = _dedup(records)
+    unique = dedup_records(records)
     if len(unique) < len(records):
         logger.info("Dropped %d duplicate(s) by photoUrl", len(records) - len(unique))
 

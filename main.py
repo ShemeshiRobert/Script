@@ -1,9 +1,9 @@
 import logging
 import sys
 
-from config import DB_CONFIG, OUTPUT_CSV, SELECTORS, TARGET_URL
-from db import fetch_existing_photo_urls, filter_new_speakers
-from exporter import write_csv
+from config import DB_CONFIG, LAST_SPEAKER_ID, OUTPUT_CSV, SELECTORS, TARGET_URL
+from db import fetch_existing_speakers, insert_speakers, reconcile_speakers
+from exporter import dedup_records, write_csv
 from scraper import fetch_page, parse_speakers
 from validator import validate_records
 
@@ -21,8 +21,9 @@ def main() -> None:
             logger.error("Row %d — %s: %s", e.row, e.field, e.reason)
         sys.exit(1)
 
-    existing = fetch_existing_photo_urls(DB_CONFIG)
-    records = filter_new_speakers(records, existing)
+    existing = fetch_existing_speakers(DB_CONFIG)
+    records = dedup_records(reconcile_speakers(records, existing, DB_CONFIG))
+    insert_speakers(DB_CONFIG, records, start_id=LAST_SPEAKER_ID + 1)
 
     write_csv(records, OUTPUT_CSV)
     logger.info("Done. %d new speaker(s) → %s", len(records), OUTPUT_CSV)

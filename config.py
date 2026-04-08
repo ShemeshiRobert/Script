@@ -38,3 +38,5 @@ DB_CONFIG = DbConfig(
     user=_require_env("DB_USER"),
     password=_require_env("DB_PASSWORD"),
 )
+
+LAST_SPEAKER_ID = int(_require_env("LAST_SPEAKER_ID"))

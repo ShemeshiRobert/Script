@@ -19,8 +19,9 @@ def _db_speaker(
     name: str = "Alice Smith",
     photo_url: str = "https://example.com/alice.jpg",
     bio: str = "Engineer",
+    description: str = "Dev",
 ) -> DbSpeaker:
-    return DbSpeaker(name=name, photo_url=photo_url, bio=bio)
+    return DbSpeaker(name=name, photo_url=photo_url, bio=bio, description=description)
 
 
 def _mock_connection(rows: Sequence[tuple[str | None, ...]]):
@@ -56,7 +57,7 @@ class TestReconcileSpeakers:
             result = reconcile_speakers([record], existing, _CFG)
 
         assert result == []
-        mock_update.assert_called_once_with(_CFG, "Alice Smith", "https://example.com/new.jpg", "Engineer")
+        mock_update.assert_called_once_with(_CFG, "Alice Smith", "https://example.com/new.jpg", "Engineer", "Dev")
 
     def test_bio_mismatch_triggers_update_and_excluded_from_csv(self):
         existing = {"alice smith": _db_speaker(bio="Old bio")}
@@ -66,7 +67,17 @@ class TestReconcileSpeakers:
             result = reconcile_speakers([record], existing, _CFG)
 
         assert result == []
-        mock_update.assert_called_once_with(_CFG, "Alice Smith", "https://example.com/alice.jpg", "New bio")
+        mock_update.assert_called_once_with(_CFG, "Alice Smith", "https://example.com/alice.jpg", "New bio", "Dev")
+
+    def test_description_mismatch_triggers_update_and_excluded_from_csv(self):
+        existing = {"alice smith": _db_speaker(description="Old title")}
+        record = _record()  # _record has description="Dev"
+
+        with patch("db.update_speaker") as mock_update:
+            result = reconcile_speakers([record], existing, _CFG)
+
+        assert result == []
+        mock_update.assert_called_once_with(_CFG, "Alice Smith", "https://example.com/alice.jpg", "Engineer", "Dev")
 
     def test_case_insensitive_name_match(self):
         # DB stores "Dr. Rania Khalaf"; scraper returns "dr. rania khalaf"
@@ -86,6 +97,12 @@ class TestReconcileSpeakers:
         # db_name arg must be the original stored value, not the scraped variant
         assert mock_update.call_args[0][1] == "Dr. Rania Khalaf"
 
+    def test_all_fields_in_sync_excluded_from_csv(self):
+        # description must also match for a speaker to be considered in sync
+        existing = {"alice smith": _db_speaker(description="Dev")}
+        result = reconcile_speakers([_record()], existing, _CFG)
+        assert result == []
+
     def test_mixed_new_and_existing_speakers(self):
         existing = {"alice smith": _db_speaker()}
         alice = _record(name="Alice Smith")
@@ -101,7 +118,7 @@ class TestReconcileSpeakers:
 
 class TestFetchExistingSpeakers:
     def test_returns_normalized_key_dict(self):
-        rows = [("Dr. Rania Khalaf", "https://example.com/r.jpg", "Bio text")]
+        rows = [("Dr. Rania Khalaf", "https://example.com/r.jpg", "Bio text", "Engineer")]
         mock_conn = _mock_connection(rows)
 
         with patch("db.mysql.connector.connect", return_value=mock_conn):
@@ -112,9 +129,10 @@ class TestFetchExistingSpeakers:
         assert speaker.name == "Dr. Rania Khalaf"
         assert speaker.photo_url == "https://example.com/r.jpg"
         assert speaker.bio == "Bio text"
+        assert speaker.description == "Engineer"
 
     def test_null_photo_url_becomes_empty_string(self):
-        rows = [("Alice", None, "Some bio")]
+        rows = [("Alice", None, "Some bio", "Dev")]
         mock_conn = _mock_connection(rows)
 
         with patch("db.mysql.connector.connect", return_value=mock_conn):
@@ -123,7 +141,7 @@ class TestFetchExistingSpeakers:
         assert result["alice"].photo_url == ""
 
     def test_null_bio_becomes_empty_string(self):
-        rows = [("Alice", "https://example.com/a.jpg", None)]
+        rows = [("Alice", "https://example.com/a.jpg", None, "Dev")]
         mock_conn = _mock_connection(rows)
 
         with patch("db.mysql.connector.connect", return_value=mock_conn):
@@ -131,8 +149,17 @@ class TestFetchExistingSpeakers:
 
         assert result["alice"].bio == ""
 
+    def test_null_description_becomes_empty_string(self):
+        rows = [("Alice", "https://example.com/a.jpg", "Bio", None)]
+        mock_conn = _mock_connection(rows)
+
+        with patch("db.mysql.connector.connect", return_value=mock_conn):
+            result = fetch_existing_speakers(_CFG)
+
+        assert result["alice"].description == ""
+
     def test_null_name_row_excluded(self):
-        rows = [(None, "https://example.com/a.jpg", "Bio")]
+        rows = [(None, "https://example.com/a.jpg", "Bio", "Dev")]
         mock_conn = _mock_connection(rows)
 
         with patch("db.mysql.connector.connect", return_value=mock_conn):
@@ -156,12 +183,12 @@ class TestUpdateSpeaker:
         mock_conn = _mock_connection([])
 
         with patch("db.mysql.connector.connect", return_value=mock_conn):
-            update_speaker(_CFG, "Dr. Rania Khalaf", "https://new.com/r.jpg", "Updated bio")
+            update_speaker(_CFG, "Dr. Rania Khalaf", "https://new.com/r.jpg", "Updated bio", "Lead Engineer")
 
         cursor = mock_conn.cursor.return_value
         cursor.execute.assert_called_once_with(
-            "UPDATE speaker SET photoUrl = %s, Bio = %s WHERE name = %s",
-            ("https://new.com/r.jpg", "Updated bio", "Dr. Rania Khalaf"),
+            "UPDATE speaker SET photoUrl = %s, Bio = %s, description = %s WHERE name = %s",
+            ("https://new.com/r.jpg", "Updated bio", "Lead Engineer", "Dr. Rania Khalaf"),
         )
         mock_conn.commit.assert_called_once()
 

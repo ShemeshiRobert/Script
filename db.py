@@ -18,6 +18,7 @@ class DbSpeaker:
     name: str
     photo_url: str
     bio: str
+    description: str
 
 
 @contextmanager
@@ -50,7 +51,7 @@ def fetch_existing_speakers(cfg: DbConfig) -> dict[str, DbSpeaker]:
     """
     with _connection(cfg) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT name, photoUrl, Bio FROM speaker")
+        cursor.execute("SELECT name, photoUrl, Bio, description FROM speaker")
         # cast: non-dict cursor returns tuples; Pylance sees a broader union without it
         rows = cast(list[tuple[Any, ...]], cursor.fetchall())
         return {
@@ -58,19 +59,20 @@ def fetch_existing_speakers(cfg: DbConfig) -> dict[str, DbSpeaker]:
                 name=row[0],
                 photo_url=str(row[1] or ""),
                 bio=str(row[2] or ""),
+                description=str(row[3] or ""),
             )
             for row in rows
             if row[0]
         }
 
 
-def update_speaker(cfg: DbConfig, db_name: str, photo_url: str, bio: str) -> None:
-    """Overwrite photoUrl and Bio for an existing speaker row, matched by original DB name."""
+def update_speaker(cfg: DbConfig, db_name: str, photo_url: str, bio: str, description: str) -> None:
+    """Overwrite photoUrl, Bio, and description for an existing speaker row, matched by original DB name."""
     with _connection(cfg) as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE speaker SET photoUrl = %s, Bio = %s WHERE name = %s",
-            (photo_url, bio, db_name),
+            "UPDATE speaker SET photoUrl = %s, Bio = %s, description = %s WHERE name = %s",
+            (photo_url, bio, description, db_name),
         )
         conn.commit()
 
@@ -125,18 +127,22 @@ def reconcile_speakers(
 
         new_photo_url = r.get("photoUrl", "")
         new_bio = r.get("Bio", "")
+        new_description = r.get("description", "")
         url_changed = new_photo_url != db_row.photo_url
         bio_changed = new_bio != db_row.bio
+        description_changed = new_description != db_row.description
 
-        if url_changed or bio_changed:
+        if url_changed or bio_changed or description_changed:
             # Use db_row.name (original DB value) as WHERE target to avoid a missed
             # UPDATE from minor formatting differences in the scraped name.
-            update_speaker(cfg, db_row.name, new_photo_url, new_bio)
+            update_speaker(cfg, db_row.name, new_photo_url, new_bio, new_description)
             logger.info("Updated speaker in DB: %s", db_row.name)
             if url_changed:
                 logger.info("  photoUrl (old): %r", db_row.photo_url)
             if bio_changed:
                 logger.info("  Bio (old): %r", db_row.bio)
+            if description_changed:
+                logger.info("  description (old): %r", db_row.description)
         else:
             logger.info("Speaker already in sync, skipping: %s", db_row.name)
 

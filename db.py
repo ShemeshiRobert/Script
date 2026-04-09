@@ -8,13 +8,14 @@ import mysql.connector
 from mysql.connector.abstracts import MySQLConnectionAbstract
 from mysql.connector.pooling import PooledMySQLConnection
 
-from config import DbConfig
+from config import DbConfig, MODERATOR_SUFFIX
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class DbSpeaker:
+    id: str
     name: str
     photo_url: str
     bio: str
@@ -35,44 +36,64 @@ def _connection(cfg: DbConfig) -> Iterator[PooledMySQLConnection | MySQLConnecti
         conn.close()
 
 
-def _normalize_name(name: str) -> str:
-    """Strip, collapse internal whitespace, and casefold for fuzzy name matching.
+def _strip_moderator_suffix(name: str) -> str:
+    name = name.strip()
+    if name.endswith(MODERATOR_SUFFIX):
+        name = name[: -len(MODERATOR_SUFFIX)]
+    return name.strip()
 
-    Handles names like 'Dr. Rania Khalaf' matching ' dr. rania khalaf '.
+
+def _normalize_name(name: str) -> str:
+    """Strip the moderator suffix, collapse whitespace, and casefold for fuzzy name matching.
+
+    Used only for building lookup keys — the raw name is preserved when writing to DB.
+    'Nirmal Fernando (Moderator)' and 'Nirmal Fernando' both normalize to the same key.
     """
-    return " ".join(name.strip().split()).casefold()
+    return " ".join(_strip_moderator_suffix(name).split()).casefold()
 
 
 def fetch_existing_speakers(cfg: DbConfig) -> dict[str, DbSpeaker]:
     """Return a normalized-name → DbSpeaker mapping for all rows in the speaker table.
 
     Keys are normalized so lookup is whitespace- and case-insensitive.
-    The original DB name is preserved in DbSpeaker.name for UPDATE queries.
+    If the same name appears more than once, the row with the highest numeric id wins —
+    that is the row targeted by any subsequent update.
     """
     with _connection(cfg) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT name, photoUrl, Bio, description FROM speaker")
-        # cast: non-dict cursor returns tuples; Pylance sees a broader union without it
+        cursor.execute("SELECT id, name, photoUrl, Bio, description FROM speaker")
         rows = cast(list[tuple[Any, ...]], cursor.fetchall())
-        return {
-            _normalize_name(row[0]): DbSpeaker(
-                name=row[0],
-                photo_url=str(row[1] or ""),
-                bio=str(row[2] or ""),
-                description=str(row[3] or ""),
+        result: dict[str, DbSpeaker] = {}
+        for row in rows:
+            if not row[1]:
+                continue
+            key = _normalize_name(row[1])
+            speaker = DbSpeaker(
+                id=str(row[0]),
+                name=row[1],
+                photo_url=str(row[2] or ""),
+                bio=str(row[3] or ""),
+                description=str(row[4] or ""),
             )
-            for row in rows
-            if row[0]
-        }
+            # id is stored as a string but contains a numeric value — compare as int
+            # so that "10" beats "9" rather than losing on string order.
+            existing = result.get(key)
+            if existing is None or int(speaker.id) > int(existing.id):
+                result[key] = speaker
+        return result
 
 
-def update_speaker(cfg: DbConfig, db_name: str, photo_url: str, bio: str, description: str) -> None:
-    """Overwrite photoUrl, Bio, and description for an existing speaker row, matched by original DB name."""
+def update_speaker(cfg: DbConfig, db_id: str, new_name: str, photo_url: str, bio: str, description: str) -> None:
+    """Overwrite name, photoUrl, Bio, and description for a speaker row, targeted by id.
+
+    Using id as the WHERE target is unambiguous even when duplicate name rows exist
+    or the name itself is changing.
+    """
     with _connection(cfg) as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE speaker SET photoUrl = %s, Bio = %s, description = %s WHERE name = %s",
-            (photo_url, bio, description, db_name),
+            "UPDATE speaker SET name = %s, photoUrl = %s, Bio = %s, description = %s WHERE id = %s",
+            (new_name, photo_url, bio, description, db_id),
         )
         conn.commit()
 
@@ -132,11 +153,14 @@ def reconcile_speakers(
         bio_changed = new_bio != db_row.bio
         description_changed = new_description != db_row.description
 
-        if url_changed or bio_changed or description_changed:
-            # Use db_row.name (original DB value) as WHERE target to avoid a missed
-            # UPDATE from minor formatting differences in the scraped name.
-            update_speaker(cfg, db_row.name, new_photo_url, new_bio, new_description)
-            logger.info("Updated speaker in DB: %s", db_row.name)
+        # Raw name comparison catches suffix additions — e.g. CSV has 'Nirmal Fernando (Moderator)'
+        # but DB still has 'Nirmal Fernando'. The suffix should be written to the DB.
+        name_changed = name != db_row.name
+        if name_changed or url_changed or bio_changed or description_changed:
+            # db_row.name as the WHERE target ensures the UPDATE hits the right row
+            # even when the name itself is changing.
+            update_speaker(cfg, db_row.id, name, new_photo_url, new_bio, new_description)
+            logger.info("Updated speaker in DB (id=%s): %s → %s", db_row.id, db_row.name, name)
             if url_changed:
                 logger.info("  photoUrl (old): %r", db_row.photo_url)
             if bio_changed:

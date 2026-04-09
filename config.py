@@ -13,6 +13,16 @@ SELECTORS: dict[str, str] = {
     "bio": "div.cModelBio",
 }
 
+# Panel moderators and some session speakers use a different card structure (div.cSpeaker / h5).
+# This selector set runs after SELECTORS; duplicates are dropped by name.
+SELECTORS_ALT: dict[str, str] = {
+    "card": "div.cSpeaker",
+    "photo": "img",
+    "name": "h5",
+    "designation": "h6",
+    "bio": "",
+}
+
 TARGET_URL = "https://wso2.com/wso2con/2026/north-america/agenda/"
 OUTPUT_CSV = "output/speakers.csv"
 
@@ -40,3 +50,7 @@ DB_CONFIG = DbConfig(
 )
 
 LAST_SPEAKER_ID = int(_require_env("LAST_SPEAKER_ID"))
+
+# Used only for lookup-key normalization during reconciliation — not stripped when writing to DB.
+# If CSV has 'Nirmal Fernando (Moderator)' and DB has 'Nirmal Fernando', the suffix is added to DB.
+MODERATOR_SUFFIX = " (Moderator)"

@@ -1,7 +1,7 @@
 import logging
 import sys
 
-from config import DB_CONFIG, LAST_SPEAKER_ID, OUTPUT_CSV, SELECTORS, TARGET_URL
+from config import DB_CONFIG, LAST_SPEAKER_ID, OUTPUT_CSV, SELECTORS, SELECTORS_ALT, TARGET_URL
 from db import fetch_existing_speakers, insert_speakers, reconcile_speakers
 from exporter import dedup_records, write_csv
 from scraper import fetch_page, parse_speakers
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 def main() -> None:
     soup = fetch_page(TARGET_URL)
-    records = parse_speakers(soup, SELECTORS, base_url=TARGET_URL)
+    records = parse_speakers(soup, [SELECTORS, SELECTORS_ALT], base_url=TARGET_URL)
 
     errors = validate_records(records)
     if errors:

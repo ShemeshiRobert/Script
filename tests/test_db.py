@@ -16,12 +16,13 @@ def _record(
 
 
 def _db_speaker(
+    id: str = "123",
     name: str = "Alice Smith",
     photo_url: str = "https://example.com/alice.jpg",
     bio: str = "Engineer",
     description: str = "Dev",
 ) -> DbSpeaker:
-    return DbSpeaker(name=name, photo_url=photo_url, bio=bio, description=description)
+    return DbSpeaker(id=id, name=name, photo_url=photo_url, bio=bio, description=description)
 
 
 def _mock_connection(rows: Sequence[tuple[str | None, ...]]):
@@ -183,12 +184,12 @@ class TestUpdateSpeaker:
         mock_conn = _mock_connection([])
 
         with patch("db.mysql.connector.connect", return_value=mock_conn):
-            update_speaker(_CFG, "Dr. Rania Khalaf", "https://new.com/r.jpg", "Updated bio", "Lead Engineer")
+            update_speaker(_CFG, "Dr. Rania Khalaf", "Dr. Rania Khalaf", "https://new.com/r.jpg", "Updated bio", "Lead Engineer")
 
         cursor = mock_conn.cursor.return_value
         cursor.execute.assert_called_once_with(
-            "UPDATE speaker SET photoUrl = %s, Bio = %s, description = %s WHERE name = %s",
-            ("https://new.com/r.jpg", "Updated bio", "Lead Engineer", "Dr. Rania Khalaf"),
+            "UPDATE speaker SET name = %s, photoUrl = %s, Bio = %s, description = %s WHERE name = %s",
+            ("Dr. Rania Khalaf", "https://new.com/r.jpg", "Updated bio", "Lead Engineer", "Dr. Rania Khalaf"),
         )
         mock_conn.commit.assert_called_once()
 

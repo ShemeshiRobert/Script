@@ -40,7 +40,9 @@ def _card_to_record(card: Tag, selectors: dict[str, str], base_url: str) -> dict
     img_tag = card.select_one(selectors["photo"])
     name_tag = card.select_one(selectors["name"])
     designation_tag = card.select_one(selectors["designation"])
-    bio_tag = card.select_one(selectors["bio"])
+    # bio selector is optional — some card structures have no bio block
+    bio_sel = selectors.get("bio", "")
+    bio_tag = card.select_one(bio_sel) if bio_sel else None
 
     name = _collapse(name_tag.get_text()) if name_tag else ""
     # Tag.get() returns str | list[str] | None; src is always a plain string attribute.
@@ -63,8 +65,24 @@ def _card_to_record(card: Tag, selectors: dict[str, str], base_url: str) -> dict
     }
 
 
-def parse_speakers(soup: BeautifulSoup, selectors: dict[str, str], base_url: str = "") -> list[dict[str, str]]:
-    """Extract speaker records from *soup* using CSS *selectors*."""
-    cards = soup.select(selectors["card"])
-    logger.info("Found %d speaker cards", len(cards))
-    return [r for card in cards if (r := _card_to_record(card, selectors, base_url))]
+def parse_speakers(
+    soup: BeautifulSoup,
+    selector_sets: list[dict[str, str]],
+    base_url: str = "",
+) -> list[dict[str, str]]:
+    """Extract speaker records from *soup* using each set of CSS selectors.
+
+    Runs all selector sets in order and deduplicates by name — if the same
+    speaker appears under multiple card structures, the first occurrence wins.
+    """
+    seen: set[str] = set()
+    results: list[dict[str, str]] = []
+    for selectors in selector_sets:
+        cards = soup.select(selectors["card"])
+        logger.info("Found %d cards with selector %r", len(cards), selectors["card"])
+        for card in cards:
+            r = _card_to_record(card, selectors, base_url)
+            if r and r["name"] not in seen:
+                seen.add(r["name"])
+                results.append(r)
+    return results

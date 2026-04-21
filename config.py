@@ -50,6 +50,9 @@ DB_CONFIG = DbConfig(
 )
 
 LAST_SPEAKER_ID = int(_require_env("LAST_SPEAKER_ID"))
+LAST_SESSION_ID = int(_require_env("LAST_SESSION_ID"))
+
+SESSION_OUTPUT_CSV = "output/sessions.csv"
 
 # Used only for lookup-key normalization during reconciliation — not stripped when writing to DB.
 # If CSV has 'Nirmal Fernando (Moderator)' and DB has 'Nirmal Fernando', the suffix is added to DB.

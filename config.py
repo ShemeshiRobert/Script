@@ -51,6 +51,7 @@ DB_CONFIG = DbConfig(
 
 LAST_SPEAKER_ID = int(_require_env("LAST_SPEAKER_ID"))
 LAST_SESSION_ID = int(_require_env("LAST_SESSION_ID"))
+SESSIONSPEAKER_START_ID = int(_require_env("SESSIONSPEAKER_START_ID"))
 
 SESSION_OUTPUT_CSV = "output/sessions.csv"
 

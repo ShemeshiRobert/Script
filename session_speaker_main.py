@@ -1,9 +1,9 @@
 import logging
 
-from config import DB_CONFIG, SESSIONSPEAKER_START_ID, TARGET_URL
+from config import DB_CONFIG, SESSIONSPEAKER_MIN_SESSION_ID, TARGET_URL
 from scraper import fetch_page
 from session_speaker_db import (
-    build_triples,
+    build_pairs,
     fetch_name_to_speaker_id,
     fetch_title_to_session_id,
     reconcile_session_speakers,
@@ -23,12 +23,15 @@ def main() -> None:
     write_session_speakers_json(sessions, SESSION_SPEAKERS_JSON)
     logger.info("Wrote %d session(s) to %s", len(sessions), SESSION_SPEAKERS_JSON)
 
+    if not sessions:
+        raise SystemExit("No sessions scraped — selector matched nothing. Aborting before DB changes.")
+
     title_map = fetch_title_to_session_id(DB_CONFIG)
     speaker_map = fetch_name_to_speaker_id(DB_CONFIG)
-    triples = build_triples(sessions, title_map, speaker_map, SESSIONSPEAKER_START_ID)
-    logger.info("Built %d triple(s)", len(triples))
+    pairs = build_pairs(sessions, title_map, speaker_map, SESSIONSPEAKER_MIN_SESSION_ID)
+    logger.info("Built %d pair(s)", len(pairs))
 
-    reconcile_session_speakers(triples, DB_CONFIG)
+    reconcile_session_speakers(pairs, DB_CONFIG, SESSIONSPEAKER_MIN_SESSION_ID)
     logger.info("Reconciliation complete")
 
 

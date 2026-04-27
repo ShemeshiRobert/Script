@@ -4,11 +4,11 @@ Scrapes session-to-speaker relationships from a conference agenda page and syncs
 
 ## What it does
 
-Fetches the WSO2Con 2026 North America agenda page, extracts each session title and its associated speaker names, then reconciles those pairs against the database — inserting missing rows and deleting stale ones.
+Extracts session titles and their associated speaker names from the WSO2Con 2026 North America agenda page — either fetched live or read from a local HTML file — then reconciles those pairs against the database, inserting missing rows and deleting stale ones.
 
 Pipeline stages:
 
-1. **Scrape** — HTTP fetch + HTML parse → for each `SessionBlock` element, extracts the session title from its `h3` and speaker names from every `cSpeaker` card inside it
+1. **Scrape** — HTML parse (live fetch or local file) → for each `SessionBlock` element, extracts the session title from its `h3` and speaker names from every `cSpeaker` card inside it
 2. **Export** — writes all scraped pairs to `output/session_speakers.json`
 3. **Reconcile** — resolves titles and names to DB ids, then syncs the `sessionspeaker` table for rows where `sessionid >= SESSIONSPEAKER_MIN_SESSION_ID`
 
@@ -34,9 +34,17 @@ SESSIONSPEAKER_MIN_SESSION_ID=   # rows with sessionid below this are never touc
 
 ## Usage
 
+Fetch the live URL:
 ```bash
 python session_speaker_main.py
 ```
+
+Scrape from a local HTML file:
+```bash
+python session_speaker_main.py --local input/agenda.html
+```
+
+Save a local copy by opening the agenda in a browser and saving as "Webpage, HTML Only", then pass that file path to `--local`. Both modes run the full pipeline — JSON export and DB reconciliation — identically.
 
 The script aborts before any DB changes if the scraper matched nothing, so a broken selector won't wipe the table.
 
@@ -83,7 +91,9 @@ When duplicate titles or names exist in the DB, the row with the highest id wins
 
 ## Logging
 
+Live fetch:
 ```
+INFO Fetching https://wso2.com/wso2con/2026/north-america/agenda/
 INFO Found 42 element(s) matching [class*='SessionBlock']
 INFO Parsed 38 session(s) with speakers
 INFO Wrote 38 session(s) to output/session_speakers.json
@@ -93,6 +103,13 @@ INFO Deleted stale row from sessionspeaker (id=204, sessionid=340, speakerid=7)
 INFO Reconciliation complete
 ```
 
+Local file:
+```
+INFO Loading local HTML from input/agenda.html
+INFO Found 42 element(s) matching [class*='SessionBlock']
+...
+```
+
 ## Module layout
 
 | File | Role |
@@ -100,4 +117,5 @@ INFO Reconciliation complete
 | `session_speaker_scraper.py` | Parses session blocks and speaker cards from HTML |
 | `session_speaker_exporter.py` | Writes and reads `output/session_speakers.json` |
 | `session_speaker_db.py` | DB lookups, pair building, `sessionspeaker` reconciliation |
-| `session_speaker_main.py` | Entry point — wires the pipeline together |
+| `session_speaker_main.py` | Entry point — wires the pipeline together, exposes `--local` flag |
+| `scraper.py` | `fetch_page` (live) and `load_local_page` (local file) |

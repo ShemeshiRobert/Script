@@ -1,7 +1,8 @@
+import argparse
 import logging
 
 from config import DB_CONFIG, SESSIONSPEAKER_MIN_SESSION_ID, TARGET_URL
-from scraper import fetch_page
+from scraper import fetch_page, load_local_page
 from session_speaker_db import (
     build_pairs,
     fetch_name_to_speaker_id,
@@ -17,8 +18,25 @@ logger = logging.getLogger(__name__)
 SESSION_SPEAKERS_JSON = "output/session_speakers.json"
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Scrape session-speaker pairs and sync to DB.")
+    parser.add_argument(
+        "--local",
+        metavar="FILE",
+        help="Path to a local HTML file to scrape instead of fetching the live URL.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
-    soup = fetch_page(TARGET_URL)
+    args = _parse_args()
+
+    if args.local:
+        logger.info("Loading local HTML from %s", args.local)
+        soup = load_local_page(args.local)
+    else:
+        logger.info("Fetching %s", TARGET_URL)
+        soup = fetch_page(TARGET_URL)
     sessions = parse_session_speakers(soup)
     write_session_speakers_json(sessions, SESSION_SPEAKERS_JSON)
     logger.info("Wrote %d session(s) to %s", len(sessions), SESSION_SPEAKERS_JSON)

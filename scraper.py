@@ -27,6 +27,15 @@ def fetch_page(url: str) -> BeautifulSoup:
     return BeautifulSoup(response.text, "html.parser")
 
 
+def load_local_page(path: str) -> BeautifulSoup:
+    """Read a local HTML file and return a parsed BeautifulSoup tree.
+
+    Raises FileNotFoundError if path does not exist.
+    """
+    with open(path, encoding="utf-8") as f:
+        return BeautifulSoup(f.read(), "html.parser")
+
+
 def _collapse(text: str) -> str:
     return " ".join(text.split())
 
